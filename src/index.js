@@ -6,7 +6,7 @@ const aiReviewer = require('./ai');
 async function main() {
   try {
     core.info('Starting AI-powered pull request review');
-    const { octokit, pullRequest, context, severity } = await initialize();
+    const { octokit, pullRequest, context } = await initialize();
 
     if (!shouldProcessPullRequest(pullRequest)) {
       core.info('Pull request does not meet processing criteria. Exiting.');
@@ -44,7 +44,7 @@ async function initialize() {
   core.info(`Fetching PR details for ${owner}/${repo}#${pull_number}`);
   const { data: pullRequest } = await octokit.rest.pulls.get({ owner, repo, pull_number });
 
-  return { octokit, pullRequest, context, severity };
+  return { octokit, pullRequest, context };
 }
 
 function shouldProcessPullRequest(pullRequest) {
