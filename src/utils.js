@@ -17,7 +17,7 @@ const generatePrompt = (patch, fileName) => {
 
   Guidelines:
   1. Set "hasReview" to false if there's nothing significant to review.
-  2. Provide no more than 3 reviews, prioritizing by severity and impact.
+  2. Provide no more than 2 reviews, prioritizing by severity and impact.
   3. do not include reviews if there is nothing to improve.
   4. Make comments clear, specific, and actionable.
   5. For suggestions, provide only the changed lines of code.
