@@ -30,7 +30,7 @@ To use this action, add a specific label (configured as `trigger-label`) to your
 - `openai-api-key`: API key for OpenAI (required if using OpenAI as the AI provider)
 - `trigger-label`: The label that triggers the review process (required)
 - `ai-provider`: The AI provider to use (optional, defaults to 'anthropic') values: ('anthropic', 'openai')
-- `severity`: The AI provide the comments with a severity flag, you can decide which of those add to the review by passing the values here ("low|medium|high"), by default only add the high severity comments.
+- `severity`: The AI provide the comments with a severity flag, you can decide which of those add to the review by passing the values here ("low|medium|high"), by default only add the medium and high severity comments.
 
 ### Secrets
 

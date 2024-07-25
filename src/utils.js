@@ -18,10 +18,11 @@ const generatePrompt = (patch, fileName) => {
   Guidelines:
   1. Set "hasReview" to false if there's nothing significant to review.
   2. Provide no more than 3 reviews, prioritizing by severity and impact.
-  3. Make comments clear, specific, and actionable.
-  4. For suggestions, provide only the changed lines of code.
-  5. Ensure the JSON is valid and can be parsed with JSON.parse().
-  6. Do not include any text outside the JSON structure.
+  3. do not include reviews if there is nothing to improve.
+  4. Make comments clear, specific, and actionable.
+  5. For suggestions, provide only the changed lines of code.
+  6. Ensure the JSON is valid and can be parsed with JSON.parse().
+  7. Do not include any text outside the JSON structure.
 
   Patch:
   ${patch}`;
