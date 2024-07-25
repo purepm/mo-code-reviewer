@@ -6,7 +6,7 @@ const aiReviewer = require('./ai');
 async function main() {
   try {
     core.info('Starting AI-powered pull request review');
-    const { octokit, pullRequest, context } = await initialize();
+    const { octokit, pullRequest, context, severity } = await initialize();
 
     if (!shouldProcessPullRequest(pullRequest)) {
       core.info('Pull request does not meet processing criteria. Exiting.');
@@ -44,7 +44,7 @@ async function initialize() {
   core.info(`Fetching PR details for ${owner}/${repo}#${pull_number}`);
   const { data: pullRequest } = await octokit.rest.pulls.get({ owner, repo, pull_number });
 
-  return { octokit, pullRequest, context };
+  return { octokit, pullRequest, context, severity };
 }
 
 function shouldProcessPullRequest(pullRequest) {
@@ -94,7 +94,7 @@ async function processChangedFiles(changedFiles, octokit, context, pullRequest) 
       core.info('Requesting AI review');
       const reviewFormatted = await aiReviewer.getReview(prompt);
 
-      if (reviewFormatted && reviewFormatted.hasReview) {
+      if (reviewFormatted && reviewFormatted.hasReview ) {
         core.info(`Creating ${reviewFormatted.reviews.length} review comments`);
         await createReviewComments(octokit, context, pullRequest, file, reviewFormatted, commits);
       } else {
@@ -108,11 +108,23 @@ async function processChangedFiles(changedFiles, octokit, context, pullRequest) 
 
 async function createReviewComments(octokit, context, pullRequest, file, reviewFormatted, commits) {
   const { owner, repo } = context.repo;
+
+  const severity = core.getInput('severity', { required: false }) || 'high';
+  const severityArray = severity.split('|');
+
   
   for (const review of reviewFormatted.reviews) {
+
+    if (!severityArray.includes(review.severity)) {
+      core.info(`Skipping review comment for ${file.filename} (${review.category}, severity: ${review.severity})`);
+      continue;
+    }
+
     core.info(`Adding review comment for ${file.filename} (${review.category}, severity: ${review.severity})`);
     const body = `
-**${review.category.toUpperCase()} - Severity: ${review.severity}**
+    | Category | Severity |
+    | -------- | -------- |
+    | ${review.category.toUpperCase()} | ${review.severity} |
 
 ${review.comment}
 
