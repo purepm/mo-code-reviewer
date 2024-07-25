@@ -122,13 +122,15 @@ async function createReviewComments(octokit, context, pullRequest, file, reviewF
 
     core.info(`Adding review comment for ${file.filename} (${review.category}, severity: ${review.severity})`);
     const body = `
-    | Category | Severity |
-    | -------- | -------- |
-    | ${review.category.toUpperCase()} | ${review.severity} |
 
+| Category | Severity |
+| -------- | -------- |
+| ${review.category.toUpperCase()} | ${review.severity} |
+
+## Issue
 ${review.comment}
 
-${review.suggestion ? `Suggestion:
+${review.suggestion ? `## Suggestion
 \`\`\`${review.language}
 ${review.suggestion}
 \`\`\`` : ''}
