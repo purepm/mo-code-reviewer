@@ -109,7 +109,7 @@ async function processChangedFiles(changedFiles, octokit, context, pullRequest) 
 async function createReviewComments(octokit, context, pullRequest, file, reviewFormatted, commits) {
   const { owner, repo } = context.repo;
 
-  const severity = core.getInput('severity', { required: false }) || 'high|medium';
+  const severity = core.getInput('severity', { required: false }) || 'high';
   const severityArray = severity.split('|');
 
   
