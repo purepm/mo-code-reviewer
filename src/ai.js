@@ -45,11 +45,12 @@ class AIReviewer {
   }
 
   async getAnthropicReview(prompt) {
-    const message = await this.client.messages.create({
-      model: "claude-3-5-sonnet-20240620",
-      max_tokens: 1024,
-      messages: [{ role: "user", content: prompt }],
-    });
+   const message = await this.client.messages.create({
+     model: "claude-3-5-sonnet-20240620",
+     max_tokens: 1024,
+     system: "You are an expert code reviewer and software engineer. Your task is to analyze code snippets provided by users and offer detailed, constructive feedback.",
+     messages: [{ role: "user", content: prompt }],
+   });
 
     return JSON.parse(message.content[0].text);
   }
