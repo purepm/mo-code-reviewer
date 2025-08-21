@@ -134,26 +134,43 @@ Use the same JSON format as comprehensive reviews, but focus on this batch of fi
 
 /**
  * Extract available line numbers from a patch
+ * Returns line numbers in the new version of the file (right side of diff)
  */
 function extractAvailableLines(patch) {
   if (!patch) return [];
   
   const lines = patch.split('\n');
   const availableLines = [];
-  let currentLine = 0;
+  let newLineNumber = 0;
+  let inHunk = false;
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    currentLine++;
     
-    // Skip hunk headers
+    // Parse hunk header to get starting line numbers
     if (line.startsWith('@@')) {
+      const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (match) {
+        newLineNumber = parseInt(match[1]) - 1; // -1 because we increment before checking
+        inHunk = true;
+      }
       continue;
     }
     
-    // Lines that can be commented on: additions and context lines (not deletions)
-    if (line.startsWith('+') || (!line.startsWith('-') && line.length > 0)) {
-      availableLines.push(currentLine);
+    if (!inHunk) continue;
+    
+    // Handle different line types
+    if (line.startsWith('+')) {
+      // Added line - increment new line number and mark as commentable
+      newLineNumber++;
+      availableLines.push(newLineNumber);
+    } else if (line.startsWith('-')) {
+      // Deleted line - don't increment new line number, not commentable
+      continue;
+    } else if (line.length > 0) {
+      // Context line - increment new line number and mark as commentable
+      newLineNumber++;
+      availableLines.push(newLineNumber);
     }
   }
   

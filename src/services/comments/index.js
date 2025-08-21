@@ -32,7 +32,7 @@ async function createAllReviewComments(octokit, context, pullRequest, reviewForm
   const stats = new CommentStats();
   
   for (const review of reviewFormatted.reviews) {
-    const reviewLogger = logger.createOperationLogger('processReview', {
+    const reviewLogger = Logger.createOperationLogger('processReview', {
       filename: review.filename,
       severity: review.severity,
       category: review.category
@@ -63,7 +63,7 @@ async function createAllReviewComments(octokit, context, pullRequest, reviewForm
     reviewLogger.info(`Creating review comment at line ${review.lineNumber}`);
     
     try {
-      await createSingleReviewComment(octokit, context, pullRequest, review, commits);
+      await createSingleReviewComment(octokit, context, pullRequest, review, commits, file);
       stats.created++;
       reviewLogger.debug(`Review comment created successfully`);
     } catch (error) {
@@ -89,8 +89,9 @@ async function createAllReviewComments(octokit, context, pullRequest, reviewForm
  * @param {Object} pullRequest - Pull request data
  * @param {Object} review - Single review object from AI
  * @param {Array} commits - Array of commits
+ * @param {Object} file - File object with patch data
  */
-async function createSingleReviewComment(octokit, context, pullRequest, review, commits) {
+async function createSingleReviewComment(octokit, context, pullRequest, review, commits, file) {
   const logger = Logger.createOperationLogger('createSingleReviewComment', {
     filename: review.filename,
     lineNumber: review.lineNumber
@@ -101,16 +102,30 @@ async function createSingleReviewComment(octokit, context, pullRequest, review, 
   try {
     const body = formatReviewComment(review);
     
-    await octokit.rest.pulls.createReviewComment({
+    // Calculate the position in the diff for this line
+    const position = calculateDiffPosition(file.patch, review.lineNumber);
+    
+    if (position === null) {
+      throw new Error(`Could not calculate diff position for line ${review.lineNumber}`);
+    }
+    
+    const commentParams = {
       repo,
       owner,
       pull_number: pullRequest.number,
       commit_id: commits[commits.length - 1].sha,
       path: review.filename,
       body: body,
-      line: review.lineNumber,
-      side: 'RIGHT'
+      position: position
+    };
+    
+    logger.debug(`Creating review comment`, { 
+      filename: review.filename,
+      lineNumber: review.lineNumber,
+      position: position
     });
+    
+    await octokit.rest.pulls.createReviewComment(commentParams);
     
     logger.debug(`GitHub API call successful`);
   } catch (error) {
@@ -169,7 +184,7 @@ ${review.suggestion}
 
 /**
  * Validates that a line number exists in the file's patch
- * @param {number} lineNumber - Line number to validate
+ * @param {number} lineNumber - Line number to validate (new file line number)
  * @param {Object} file - File object with patch
  * @returns {boolean} True if line number is valid for commenting
  */
@@ -185,25 +200,46 @@ function validateLineNumber(lineNumber, file) {
   }
   
   const lines = file.patch.split('\n');
-  let currentLine = 0;
+  let newLineNumber = 0;
+  let inHunk = false;
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    currentLine++;
     
-    // Skip hunk headers
+    // Parse hunk header to get starting line numbers
     if (line.startsWith('@@')) {
+      const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (match) {
+        newLineNumber = parseInt(match[1]) - 1; // -1 because we increment before checking
+        inHunk = true;
+      }
       continue;
     }
     
-    // Check if this is a valid line for commenting (additions and context lines)
-    if ((line.startsWith('+') || (!line.startsWith('-') && line.length > 0)) && currentLine === lineNumber) {
-      logger.debug(`Line number validation successful`);
-      return true;
+    if (!inHunk) continue;
+    
+    // Handle different line types
+    if (line.startsWith('+')) {
+      // Added line - increment new line number and check if it matches
+      newLineNumber++;
+      if (newLineNumber === lineNumber) {
+        logger.debug(`Line number validation successful - added line`);
+        return true;
+      }
+    } else if (line.startsWith('-')) {
+      // Deleted line - don't increment new line number, not commentable
+      continue;
+    } else if (line.length > 0) {
+      // Context line - increment new line number and check if it matches
+      newLineNumber++;
+      if (newLineNumber === lineNumber) {
+        logger.debug(`Line number validation successful - context line`);
+        return true;
+      }
     }
   }
   
-  logger.debug(`Line number not found in patch`);
+  logger.debug(`Line number ${lineNumber} not found in patch`);
   return false;
 }
 
@@ -263,10 +299,67 @@ ${reviewFormatted.overallAssessment}
   }
 }
 
+/**
+ * Calculate the position in the diff for a given file line number
+ * Position is the line index in the diff starting from the first @@ hunk header
+ * @param {string} patch - The patch content
+ * @param {number} targetLineNumber - The line number in the new file
+ * @returns {number|null} The position in the diff or null if not found
+ */
+function calculateDiffPosition(patch, targetLineNumber) {
+  if (!patch) return null;
+  
+  const lines = patch.split('\n');
+  let newLineNumber = 0;
+  let diffPosition = 0;
+  let inHunk = false;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    // Start of a new hunk
+    if (line.startsWith('@@')) {
+      // Parse hunk header to get starting line numbers
+      const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (match) {
+        newLineNumber = parseInt(match[1]) - 1; // -1 because we increment before checking
+        inHunk = true;
+        diffPosition = i; // Position of the @@ line itself
+      }
+      continue;
+    }
+    
+    if (!inHunk) continue;
+    
+    diffPosition++; // Increment position for each line after @@
+    
+    // Handle different line types
+    if (line.startsWith('+')) {
+      // Added line - increment new line number and check if it matches
+      newLineNumber++;
+      if (newLineNumber === targetLineNumber) {
+        return diffPosition;
+      }
+    } else if (line.startsWith('-')) {
+      // Deleted line - don't increment new line number, but it's still a diff position
+      continue;
+    } else if (line.length > 0) {
+      // Context line - increment new line number and check if it matches
+      newLineNumber++;
+      if (newLineNumber === targetLineNumber) {
+        return diffPosition;
+      }
+    }
+  }
+  
+  return null;
+}
+
 module.exports = {
   createAllReviewComments,
   createSingleReviewComment,
   formatReviewComment,
   validateLineNumber,
-  createSummaryComment
+  createSummaryComment,
+  calculateDiffPosition
 };
