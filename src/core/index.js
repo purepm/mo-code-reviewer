@@ -10,14 +10,14 @@ const {
   createFileBatches
 } = require('../utils');
 const { initializeAI, getAIService } = require('../services/ai');
-const { createAllReviewComments, createSummaryComment } = require('../services/comments');
+const { createAllReviewComments } = require('../services/comments');
 
 async function main() {
   const logger = Logger.createOperationLogger('main');
   
   try {
     logger.info('Starting AI-powered pull request review');
-    const { octokit, prContext, context } = await initialize();
+    const { octokit, prContext, context, pullRequest } = await initialize();
 
     if (!shouldProcessPullRequest(prContext)) {
       logger.info('Pull request does not meet processing criteria. Exiting.');
@@ -200,12 +200,10 @@ async function processHolistically(files, octokit, context, prContext, commits) 
         reviewCount: reviewFormatted.reviews.length
       });
       
-      const commentStats = await createAllReviewComments(octokit, context, { number: prContext.number }, reviewFormatted, files, commits);
+      await createAllReviewComments(octokit, context, { number: prContext.number }, reviewFormatted, files, commits);
       
-      // Create summary comment if there's an overall assessment
-      if (reviewFormatted.overallAssessment) {
-        await createSummaryComment(octokit, context, { number: prContext.number }, reviewFormatted, commentStats);
-      }
+      // Store overall assessment for use in finalization
+      prContext.overallAssessment = reviewFormatted.overallAssessment;
     } else {
       logger.info('No review comments to add');
     }
@@ -228,7 +226,7 @@ async function processByBatches(files, octokit, context, prContext, commits) {
   
   for (let i = 0; i < batches.length; i++) {
     const batch = batches[i];
-    const batchLogger = logger.createOperationLogger(`batch-${i + 1}`, {
+    const batchLogger = Logger.createOperationLogger(`batch-${i + 1}`, {
       batchNumber: i + 1,
       totalBatches: batches.length,
       filesInBatch: batch.length
@@ -258,6 +256,12 @@ async function processByBatches(files, octokit, context, prContext, commits) {
       if (reviewFormatted?.hasReview) {
         batchLogger.info(`Creating review comments`, { reviewCount: reviewFormatted.reviews.length });
         const commentStats = await createAllReviewComments(octokit, context, { number: prContext.number }, reviewFormatted, batch, commits);
+        
+        // Store overall assessment from the first batch that has one
+        if (reviewFormatted.overallAssessment && !prContext.overallAssessment) {
+          prContext.overallAssessment = reviewFormatted.overallAssessment;
+        }
+        
         batchLogger.info(`Batch processing completed`, { 
           created: commentStats.created,
           skipped: commentStats.skipped,
@@ -291,12 +295,22 @@ async function finalizePullRequest(octokit, context, prContext) {
     });
 
     logger.info('Creating approval review');
+    
+    // Build the completion message with optional overall assessment
+    let completionBody = '✅ **AI Code Review Completed**\n\n';
+    
+    if (prContext.overallAssessment) {
+      completionBody += `## Overall Assessment\n${prContext.overallAssessment}\n\n`;
+    }
+    
+    completionBody += 'The automated code review has been completed successfully. Please review the AI suggestions and use your judgment when implementing changes.';
+    
     await octokit.rest.pulls.createReview({
       repo,
       owner,
       pull_number: prContext.number,
       event: 'APPROVE',
-      body: '✅ **AI Code Review Completed**\n\nThe automated code review has been completed successfully. Please review the AI suggestions and use your judgment when implementing changes.'
+      body: completionBody
     });
     
     logger.info('Pull request finalization completed successfully');
