@@ -17,7 +17,7 @@ async function main() {
   
   try {
     logger.info('Starting AI-powered pull request review');
-    const { octokit, prContext, context } = await initialize();
+    const { octokit, prContext, context, pullRequest } = await initialize();
 
     if (!shouldProcessPullRequest(prContext)) {
       logger.info('Pull request does not meet processing criteria. Exiting.');
@@ -228,7 +228,7 @@ async function processByBatches(files, octokit, context, prContext, commits) {
   
   for (let i = 0; i < batches.length; i++) {
     const batch = batches[i];
-    const batchLogger = logger.createOperationLogger(`batch-${i + 1}`, {
+    const batchLogger = Logger.createOperationLogger(`batch-${i + 1}`, {
       batchNumber: i + 1,
       totalBatches: batches.length,
       filesInBatch: batch.length
