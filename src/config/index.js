@@ -10,10 +10,10 @@ class Config {
 
   // Performance limits
   static LIMITS = {
-    MAX_FILES_HOLISTIC: 15,        // Max files for single holistic analysis
+    MAX_FILES_HOLISTIC: 100,        // Max files for single holistic analysis
     MAX_TOTAL_LINES: 2000,         // Max total patch lines across all files
     MAX_FILE_LINES: 500,           // Max patch lines per file
-    MAX_BATCH_SIZE: 5,             // Max files per batch in fallback mode
+    MAX_BATCH_SIZE: 20,             // Max files per batch in fallback mode
     MAX_REVIEWS_PER_BATCH: 8,      // Max reviews per batch
     MAX_RETRIES: 3,                // Max AI API retries
     MAX_BACKOFF_DELAY: 10000       // Max retry delay in ms
