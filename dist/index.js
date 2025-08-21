@@ -23501,18 +23501,18 @@ ${filesContext}
 Provide your review in JSON format:
 {
   "hasReview": boolean,
-  "overallAssessment": "Brief summary of the PR's quality and main concerns",
+  "overallAssessment": "Comprehensive analysis of the PR including: 1) What the PR accomplishes, 2) Key strengths and positive aspects, 3) Main concerns and risks (focus primarily on high severity issues that will have inline comments), 4) Impact on system architecture/security/performance, 5) Recommendations for improvement. Be thorough but concise (3-5 sentences). IMPORTANT: Only high severity issues will have inline comments, so emphasize those in your assessment. If you mention medium/low severity issues, you MUST use explicit phrases like 'Additional considerations include:', 'Minor improvements needed:', or 'Lower priority issues:' to clearly explain why they don't have inline comments.",
   "reviews": [
     {
       "filename": "exact filename from the changed files",
       "lineNumber": number,
-      "comment": "Detailed explanation considering full PR context",
+      "comment": "Brief, focused explanation of the specific issue (1-2 sentences max)",
       "suggestion": "Code suggestion if applicable, otherwise null",
       "language": "Programming language",
       "severity": "low|medium|high",
       "category": "bug|security|performance|style|best_practice|architecture",
-      "crossFileImpact": "How this affects other files in the PR (if applicable)",
-      "contextualReason": "Why this is important given the overall PR changes"
+      "crossFileImpact": "Brief note on cross-file effects (1 sentence or null)",
+      "contextualReason": "Brief reason why this matters (1 sentence)"
     }
   ]
 }
@@ -23530,11 +23530,15 @@ Provide your review in JSON format:
 - Ensure JSON is valid and parseable
 
 Guidelines:
-- Make comments clear, specific, and actionable
-- For suggestions, provide only the relevant code changes
-- Consider how changes in one file affect others
-- Identify patterns and inconsistencies across files
-- Prioritize security and correctness issues
+- **Individual Reviews**: Keep comments brief and focused - identify the issue quickly without lengthy explanations
+- **Overall Assessment**: Be comprehensive and detailed - analyze the PR holistically, covering accomplishments, strengths, concerns, and recommendations
+- **Severity Alignment**: In overallAssessment, emphasize high severity issues since only those will have inline comments visible to users
+- **Clear Labeling**: When mentioning medium/low severity issues, MUST use explicit phrases like "Additional considerations include...", "Minor improvements needed...", "Lower priority issues...", or "Note: the following medium/low severity issues won't have inline comments:" to explain why they don't have inline comments
+- **Avoid Confusion**: Don't extensively discuss medium/low severity issues without clearly indicating their lower priority status
+- **Suggestions**: Provide only the essential code changes needed
+- **Cross-file Impact**: Note briefly how changes affect other files
+- **Prioritization**: Focus on security and correctness issues first
+- **Brevity**: Individual comments should be concise; save detailed analysis for overallAssessment
 - Do not include any text outside the JSON structure`;
     }
     function generateBatchPrompt2(batchContext) {
@@ -23569,11 +23573,32 @@ ${relatedContext}
 4. Apply the same analysis criteria as a comprehensive review
 
 ## Response Format
-Use the same JSON format as comprehensive reviews, but focus on this batch of files.
+Use the same JSON format as comprehensive reviews:
+{
+  "hasReview": boolean,
+  "overallAssessment": "Detailed analysis of this batch: what it accomplishes, key concerns (emphasize high severity issues that will have inline comments), architectural impact, and how it fits into the broader PR context (2-4 sentences). IMPORTANT: Only high severity issues will have inline comments. If mentioning medium/low severity issues, you MUST use explicit phrases like 'Additional considerations include:', 'Minor improvements needed:', or 'Lower priority issues:' to clarify why they lack inline comments.",
+  "reviews": [
+    {
+      "filename": "exact filename from the batch",
+      "lineNumber": number,
+      "comment": "Brief, focused explanation of the specific issue (1-2 sentences max)",
+      "suggestion": "Code suggestion if applicable, otherwise null",
+      "language": "Programming language", 
+      "severity": "low|medium|high",
+      "category": "bug|security|performance|style|best_practice|architecture",
+      "crossFileImpact": "Brief note on cross-file effects (1 sentence or null)",
+      "contextualReason": "Brief reason why this matters (1 sentence)"
+    }
+  ]
+}
 
 ## Critical Instructions:
 - ONLY use line numbers from the "Available lines for comments" lists
 - Maximum ${config2.LIMITS.MAX_REVIEWS_PER_BATCH} reviews for this batch
+- **Individual comments**: Keep brief and focused
+- **Overall assessment**: Provide detailed analysis of this batch's role in the PR, emphasizing high severity issues
+- **Severity Alignment**: Focus overallAssessment on high severity issues since only those will have inline comments
+- **Clear Labeling**: If mentioning medium/low severity issues, explicitly label them as "additional considerations" or "minor improvements"
 - Prioritize by severity and cross-file impact
 - Consider the broader PR context when available`;
     }
@@ -23581,15 +23606,27 @@ Use the same JSON format as comprehensive reviews, but focus on this batch of fi
       if (!patch) return [];
       const lines = patch.split("\n");
       const availableLines = [];
-      let currentLine = 0;
+      let newLineNumber = 0;
+      let inHunk = false;
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        currentLine++;
         if (line.startsWith("@@")) {
+          const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+          if (match) {
+            newLineNumber = parseInt(match[1]) - 1;
+            inHunk = true;
+          }
           continue;
         }
-        if (line.startsWith("+") || !line.startsWith("-") && line.length > 0) {
-          availableLines.push(currentLine);
+        if (!inHunk) continue;
+        if (line.startsWith("+")) {
+          newLineNumber++;
+          availableLines.push(newLineNumber);
+        } else if (line.startsWith("-")) {
+          continue;
+        } else if (line.length > 0) {
+          newLineNumber++;
+          availableLines.push(newLineNumber);
         }
       }
       return availableLines;
@@ -45929,9 +45966,9 @@ var require_comments = __commonJS({
     var { Logger: Logger2 } = require_logger();
     var { GitHubAPIError: GitHubAPIError2 } = require_errors2();
     var { CommentStats } = require_models();
-    async function createAllReviewComments2(octokit, context, pullRequest2, reviewFormatted, files, commits) {
+    async function createAllReviewComments2(octokit, context, pullRequest, reviewFormatted, files, commits) {
       const logger = Logger2.createOperationLogger("createAllReviewComments", {
-        prNumber: pullRequest2.number,
+        prNumber: pullRequest.number,
         reviewCount: reviewFormatted.reviews.length
       });
       const { owner, repo } = context.repo;
@@ -45943,7 +45980,7 @@ var require_comments = __commonJS({
       });
       const stats = new CommentStats();
       for (const review of reviewFormatted.reviews) {
-        const reviewLogger = logger.createOperationLogger("processReview", {
+        const reviewLogger = Logger2.createOperationLogger("processReview", {
           filename: review.filename,
           severity: review.severity,
           category: review.category
@@ -45966,7 +46003,7 @@ var require_comments = __commonJS({
         }
         reviewLogger.info(`Creating review comment at line ${review.lineNumber}`);
         try {
-          await createSingleReviewComment(octokit, context, pullRequest2, review, commits);
+          await createSingleReviewComment(octokit, context, pullRequest, review, commits, file);
           stats.created++;
           reviewLogger.debug(`Review comment created successfully`);
         } catch (error) {
@@ -45982,7 +46019,7 @@ var require_comments = __commonJS({
       });
       return stats;
     }
-    async function createSingleReviewComment(octokit, context, pullRequest2, review, commits) {
+    async function createSingleReviewComment(octokit, context, pullRequest, review, commits, file) {
       const logger = Logger2.createOperationLogger("createSingleReviewComment", {
         filename: review.filename,
         lineNumber: review.lineNumber
@@ -45990,16 +46027,25 @@ var require_comments = __commonJS({
       const { owner, repo } = context.repo;
       try {
         const body = formatReviewComment(review);
-        await octokit.rest.pulls.createReviewComment({
+        const position = calculateDiffPosition(file.patch, review.lineNumber);
+        if (position === null) {
+          throw new Error(`Could not calculate diff position for line ${review.lineNumber}`);
+        }
+        const commentParams = {
           repo,
           owner,
-          pull_number: pullRequest2.number,
+          pull_number: pullRequest.number,
           commit_id: commits[commits.length - 1].sha,
           path: review.filename,
           body,
-          line: review.lineNumber,
-          side: "RIGHT"
+          position
+        };
+        logger.debug(`Creating review comment`, {
+          filename: review.filename,
+          lineNumber: review.lineNumber,
+          position
         });
+        await octokit.rest.pulls.createReviewComment(commentParams);
         logger.debug(`GitHub API call successful`);
       } catch (error) {
         logger.error(`GitHub API call failed`, { error: error.message });
@@ -46050,69 +46096,79 @@ ${review.suggestion}
         return false;
       }
       const lines = file.patch.split("\n");
-      let currentLine = 0;
+      let newLineNumber = 0;
+      let inHunk = false;
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        currentLine++;
         if (line.startsWith("@@")) {
+          const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+          if (match) {
+            newLineNumber = parseInt(match[1]) - 1;
+            inHunk = true;
+          }
           continue;
         }
-        if ((line.startsWith("+") || !line.startsWith("-") && line.length > 0) && currentLine === lineNumber) {
-          logger.debug(`Line number validation successful`);
-          return true;
+        if (!inHunk) continue;
+        if (line.startsWith("+")) {
+          newLineNumber++;
+          if (newLineNumber === lineNumber) {
+            logger.debug(`Line number validation successful - added line`);
+            return true;
+          }
+        } else if (line.startsWith("-")) {
+          continue;
+        } else if (line.length > 0) {
+          newLineNumber++;
+          if (newLineNumber === lineNumber) {
+            logger.debug(`Line number validation successful - context line`);
+            return true;
+          }
         }
       }
-      logger.debug(`Line number not found in patch`);
+      logger.debug(`Line number ${lineNumber} not found in patch`);
       return false;
     }
-    async function createSummaryComment2(octokit, context, pullRequest2, reviewFormatted, commentStats) {
-      const logger = Logger2.createOperationLogger("createSummaryComment", {
-        prNumber: pullRequest2.number
-      });
-      if (!reviewFormatted.overallAssessment) {
-        logger.debug(`No overall assessment provided, skipping summary comment`);
-        return;
+    function calculateDiffPosition(patch, targetLineNumber) {
+      if (!patch) return null;
+      const lines = patch.split("\n");
+      let newLineNumber = 0;
+      let diffPosition = 0;
+      let inHunk = false;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.startsWith("@@")) {
+          const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+          if (match) {
+            newLineNumber = parseInt(match[1]) - 1;
+            inHunk = true;
+            diffPosition = i;
+          }
+          continue;
+        }
+        if (!inHunk) continue;
+        diffPosition++;
+        if (line.startsWith("+")) {
+          newLineNumber++;
+          if (newLineNumber === targetLineNumber) {
+            return diffPosition;
+          }
+        } else if (line.startsWith("-")) {
+          continue;
+        } else if (line.length > 0) {
+          newLineNumber++;
+          if (newLineNumber === targetLineNumber) {
+            return diffPosition;
+          }
+        }
       }
-      const { owner, repo } = context.repo;
-      const reviewStats = reviewFormatted.getStats();
-      const summaryBody = `
-## \u{1F916} AI Code Review Summary
-
-${reviewFormatted.overallAssessment}
-
-### Review Statistics
-- **Comments Created**: ${commentStats.created}
-- **Comments Skipped**: ${commentStats.skipped}
-- **Comments Failed**: ${commentStats.errors}
-- **Total Issues Found**: ${reviewStats.totalReviews}
-- **Success Rate**: ${commentStats.successRate.toFixed(1)}%
-
-### Issue Breakdown
-**By Severity**: ${Object.entries(reviewStats.severityCounts).map(([severity, count]) => `${severity}: ${count}`).join(", ")}
-**By Category**: ${Object.entries(reviewStats.categoryCounts).map(([category, count]) => `${category}: ${count}`).join(", ")}
-
----
-*This review was generated automatically by AI. Please review the suggestions and use your judgment.*
-`;
-      try {
-        await octokit.rest.issues.createComment({
-          owner,
-          repo,
-          issue_number: pullRequest2.number,
-          body: summaryBody
-        });
-        logger.info("AI review summary comment created successfully");
-      } catch (error) {
-        logger.warning(`Failed to create summary comment`, { error: error.message });
-        throw new GitHubAPIError2(`Failed to create summary comment: ${error.message}`, error.status);
-      }
+      return null;
     }
     module2.exports = {
       createAllReviewComments: createAllReviewComments2,
       createSingleReviewComment,
       formatReviewComment,
       validateLineNumber,
-      createSummaryComment: createSummaryComment2
+      calculateDiffPosition
     };
   }
 });
@@ -46130,12 +46186,12 @@ var {
   createFileBatches
 } = require_utils5();
 var { initializeAI, getAIService } = require_ai();
-var { createAllReviewComments, createSummaryComment } = require_comments();
+var { createAllReviewComments } = require_comments();
 async function main() {
   const logger = Logger.createOperationLogger("main");
   try {
     logger.info("Starting AI-powered pull request review");
-    const { octokit, prContext, context } = await initialize();
+    const { octokit, prContext, context, pullRequest } = await initialize();
     if (!shouldProcessPullRequest(prContext)) {
       logger.info("Pull request does not meet processing criteria. Exiting.");
       return;
@@ -46179,11 +46235,11 @@ async function initialize() {
       throw new PRReviewError("No pull request number found in context", "MISSING_PR_NUMBER");
     }
     logger.info(`Fetching PR details`, { owner, repo, pullNumber: pull_number });
-    const { data: pullRequest2 } = await octokit.rest.pulls.get({ owner, repo, pull_number });
+    const { data: pullRequest } = await octokit.rest.pulls.get({ owner, repo, pull_number });
     const prContext = new PRContext({
-      title: pullRequest2.title,
-      body: pullRequest2.body,
-      number: pullRequest2.number,
+      title: pullRequest.title,
+      body: pullRequest.body,
+      number: pullRequest.number,
       owner,
       repo,
       files: [],
@@ -46192,7 +46248,7 @@ async function initialize() {
       // Will be populated later
     });
     logger.info("Initialization completed successfully");
-    return { octokit, prContext, context, pullRequest: pullRequest2 };
+    return { octokit, prContext, context, pullRequest };
   } catch (error) {
     logger.error("Initialization failed", { error: error.message });
     if (error.status) {
@@ -46210,18 +46266,18 @@ function shouldProcessPullRequest(prContext) {
   logger.info("Pull request meets processing criteria");
   return true;
 }
-async function getChangedFiles(octokit, context, pullRequest2) {
+async function getChangedFiles(octokit, context, pullRequest) {
   const logger = Logger.createOperationLogger("getChangedFiles", {
-    prNumber: pullRequest2.number
+    prNumber: pullRequest.number
   });
   const { owner, repo } = context.repo;
   try {
-    logger.info(`Comparing commits: ${pullRequest2.base.sha}...${pullRequest2.head.sha}`);
+    logger.info(`Comparing commits: ${pullRequest.base.sha}...${pullRequest.head.sha}`);
     const { data } = await octokit.rest.repos.compareCommits({
       owner,
       repo,
-      base: pullRequest2.base.sha,
-      head: pullRequest2.head.sha
+      base: pullRequest.base.sha,
+      head: pullRequest.head.sha
     });
     logger.info(`Retrieved changed files`, {
       fileCount: data.files.length,
@@ -46276,9 +46332,11 @@ async function processHolistically(files, octokit, context, prContext, commits) 
         hasAssessment: Boolean(reviewFormatted.overallAssessment),
         reviewCount: reviewFormatted.reviews.length
       });
-      const commentStats = await createAllReviewComments(octokit, context, { number: prContext.number }, reviewFormatted, files, commits);
-      if (reviewFormatted.overallAssessment) {
-        await createSummaryComment(octokit, context, { number: prContext.number }, reviewFormatted, commentStats);
+      await createAllReviewComments(octokit, context, { number: prContext.number }, reviewFormatted, files, commits);
+      prContext.overallAssessment = reviewFormatted.overallAssessment;
+      const hasHighSeverityIssues = reviewFormatted.reviews.some((review) => review.severity === "high");
+      if (hasHighSeverityIssues) {
+        prContext.hasHighSeverityIssues = true;
       }
     } else {
       logger.info("No review comments to add");
@@ -46298,7 +46356,7 @@ async function processByBatches(files, octokit, context, prContext, commits) {
   logger.info(`Processing ${batches.length} batches`);
   for (let i = 0; i < batches.length; i++) {
     const batch = batches[i];
-    const batchLogger = logger.createOperationLogger(`batch-${i + 1}`, {
+    const batchLogger = Logger.createOperationLogger(`batch-${i + 1}`, {
       batchNumber: i + 1,
       totalBatches: batches.length,
       filesInBatch: batch.length
@@ -46324,6 +46382,13 @@ async function processByBatches(files, octokit, context, prContext, commits) {
       if (reviewFormatted?.hasReview) {
         batchLogger.info(`Creating review comments`, { reviewCount: reviewFormatted.reviews.length });
         const commentStats = await createAllReviewComments(octokit, context, { number: prContext.number }, reviewFormatted, batch, commits);
+        if (reviewFormatted.overallAssessment && !prContext.overallAssessment) {
+          prContext.overallAssessment = reviewFormatted.overallAssessment;
+        }
+        const hasHighSeverityIssues = reviewFormatted.reviews.some((review) => review.severity === "high");
+        if (hasHighSeverityIssues) {
+          prContext.hasHighSeverityIssues = true;
+        }
         batchLogger.info(`Batch processing completed`, {
           created: commentStats.created,
           skipped: commentStats.skipped,
@@ -46352,12 +46417,21 @@ async function finalizePullRequest(octokit, context, prContext) {
       name: requiredLabel
     });
     logger.info("Creating approval review");
+    const emoji = prContext.hasHighSeverityIssues ? "\u26A0\uFE0F" : "\u2705";
+    let completionBody = `${emoji} **AI Code Review Completed**
+
+`;
+    if (prContext.overallAssessment) {
+      completionBody += `${prContext.overallAssessment}
+
+`;
+    }
     await octokit.rest.pulls.createReview({
       repo,
       owner,
       pull_number: prContext.number,
       event: "APPROVE",
-      body: "\u2705 **AI Code Review Completed**\n\nThe automated code review has been completed successfully. Please review the AI suggestions and use your judgment when implementing changes."
+      body: completionBody
     });
     logger.info("Pull request finalization completed successfully");
   } catch (e) {

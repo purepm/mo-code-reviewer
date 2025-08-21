@@ -49,18 +49,18 @@ ${filesContext}
 Provide your review in JSON format:
 {
   "hasReview": boolean,
-  "overallAssessment": "Brief summary of the PR's quality and main concerns",
+  "overallAssessment": "Comprehensive analysis of the PR including: 1) What the PR accomplishes, 2) Key strengths and positive aspects, 3) Main concerns and risks (focus primarily on high severity issues that will have inline comments), 4) Impact on system architecture/security/performance, 5) Recommendations for improvement. Be thorough but concise (3-5 sentences). IMPORTANT: Only high severity issues will have inline comments, so emphasize those in your assessment. If you mention medium/low severity issues, you MUST use explicit phrases like 'Additional considerations include:', 'Minor improvements needed:', or 'Lower priority issues:' to clearly explain why they don't have inline comments.",
   "reviews": [
     {
       "filename": "exact filename from the changed files",
       "lineNumber": number,
-      "comment": "Detailed explanation considering full PR context",
+      "comment": "Brief, focused explanation of the specific issue (1-2 sentences max)",
       "suggestion": "Code suggestion if applicable, otherwise null",
       "language": "Programming language",
       "severity": "low|medium|high",
       "category": "bug|security|performance|style|best_practice|architecture",
-      "crossFileImpact": "How this affects other files in the PR (if applicable)",
-      "contextualReason": "Why this is important given the overall PR changes"
+      "crossFileImpact": "Brief note on cross-file effects (1 sentence or null)",
+      "contextualReason": "Brief reason why this matters (1 sentence)"
     }
   ]
 }
@@ -78,11 +78,15 @@ Provide your review in JSON format:
 - Ensure JSON is valid and parseable
 
 Guidelines:
-- Make comments clear, specific, and actionable
-- For suggestions, provide only the relevant code changes
-- Consider how changes in one file affect others
-- Identify patterns and inconsistencies across files
-- Prioritize security and correctness issues
+- **Individual Reviews**: Keep comments brief and focused - identify the issue quickly without lengthy explanations
+- **Overall Assessment**: Be comprehensive and detailed - analyze the PR holistically, covering accomplishments, strengths, concerns, and recommendations
+- **Severity Alignment**: In overallAssessment, emphasize high severity issues since only those will have inline comments visible to users
+- **Clear Labeling**: When mentioning medium/low severity issues, MUST use explicit phrases like "Additional considerations include...", "Minor improvements needed...", "Lower priority issues...", or "Note: the following medium/low severity issues won't have inline comments:" to explain why they don't have inline comments
+- **Avoid Confusion**: Don't extensively discuss medium/low severity issues without clearly indicating their lower priority status
+- **Suggestions**: Provide only the essential code changes needed
+- **Cross-file Impact**: Note briefly how changes affect other files
+- **Prioritization**: Focus on security and correctness issues first
+- **Brevity**: Individual comments should be concise; save detailed analysis for overallAssessment
 - Do not include any text outside the JSON structure`;
 }
 
@@ -123,37 +127,75 @@ ${relatedContext}
 4. Apply the same analysis criteria as a comprehensive review
 
 ## Response Format
-Use the same JSON format as comprehensive reviews, but focus on this batch of files.
+Use the same JSON format as comprehensive reviews:
+{
+  "hasReview": boolean,
+  "overallAssessment": "Detailed analysis of this batch: what it accomplishes, key concerns (emphasize high severity issues that will have inline comments), architectural impact, and how it fits into the broader PR context (2-4 sentences). IMPORTANT: Only high severity issues will have inline comments. If mentioning medium/low severity issues, you MUST use explicit phrases like 'Additional considerations include:', 'Minor improvements needed:', or 'Lower priority issues:' to clarify why they lack inline comments.",
+  "reviews": [
+    {
+      "filename": "exact filename from the batch",
+      "lineNumber": number,
+      "comment": "Brief, focused explanation of the specific issue (1-2 sentences max)",
+      "suggestion": "Code suggestion if applicable, otherwise null",
+      "language": "Programming language", 
+      "severity": "low|medium|high",
+      "category": "bug|security|performance|style|best_practice|architecture",
+      "crossFileImpact": "Brief note on cross-file effects (1 sentence or null)",
+      "contextualReason": "Brief reason why this matters (1 sentence)"
+    }
+  ]
+}
 
 ## Critical Instructions:
 - ONLY use line numbers from the "Available lines for comments" lists
 - Maximum ${config.LIMITS.MAX_REVIEWS_PER_BATCH} reviews for this batch
+- **Individual comments**: Keep brief and focused
+- **Overall assessment**: Provide detailed analysis of this batch's role in the PR, emphasizing high severity issues
+- **Severity Alignment**: Focus overallAssessment on high severity issues since only those will have inline comments
+- **Clear Labeling**: If mentioning medium/low severity issues, explicitly label them as "additional considerations" or "minor improvements"
 - Prioritize by severity and cross-file impact
 - Consider the broader PR context when available`;
 }
 
 /**
  * Extract available line numbers from a patch
+ * Returns line numbers in the new version of the file (right side of diff)
  */
 function extractAvailableLines(patch) {
   if (!patch) return [];
   
   const lines = patch.split('\n');
   const availableLines = [];
-  let currentLine = 0;
+  let newLineNumber = 0;
+  let inHunk = false;
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    currentLine++;
     
-    // Skip hunk headers
+    // Parse hunk header to get starting line numbers
     if (line.startsWith('@@')) {
+      const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (match) {
+        newLineNumber = parseInt(match[1]) - 1; // -1 because we increment before checking
+        inHunk = true;
+      }
       continue;
     }
     
-    // Lines that can be commented on: additions and context lines (not deletions)
-    if (line.startsWith('+') || (!line.startsWith('-') && line.length > 0)) {
-      availableLines.push(currentLine);
+    if (!inHunk) continue;
+    
+    // Handle different line types
+    if (line.startsWith('+')) {
+      // Added line - increment new line number and mark as commentable
+      newLineNumber++;
+      availableLines.push(newLineNumber);
+    } else if (line.startsWith('-')) {
+      // Deleted line - don't increment new line number, not commentable
+      continue;
+    } else if (line.length > 0) {
+      // Context line - increment new line number and mark as commentable
+      newLineNumber++;
+      availableLines.push(newLineNumber);
     }
   }
   
