@@ -49,18 +49,16 @@ ${filesContext}
 Provide your review in JSON format:
 {
   "hasReview": boolean,
-  "overallAssessment": "Brief summary of the PR's quality and main concerns",
+  "overallAssessment": "Provide a analysis of the PR formatted in markdown with proper structure. Be thorough but concise. Focus on actionable items. Use markdown for better presentation.",
   "reviews": [
     {
       "filename": "exact filename from the changed files",
       "lineNumber": number,
-      "comment": "Detailed explanation considering full PR context",
-      "suggestion": "Code suggestion if applicable, otherwise null",
+      "comment": "Brief, focused explanation of the specific issue (1-2 sentences max)",
+      "suggestion": "Only provide code suggestion if absolutely necessary for critical fixes, otherwise null",
       "language": "Programming language",
       "severity": "low|medium|high",
-      "category": "bug|security|performance|style|best_practice|architecture",
-      "crossFileImpact": "How this affects other files in the PR (if applicable)",
-      "contextualReason": "Why this is important given the overall PR changes"
+      "category": "bug|security|performance|style|best_practice|architecture"
     }
   ]
 }
@@ -73,16 +71,18 @@ Provide your review in JSON format:
 - Set "hasReview" to false if there are no significant issues
 - Focus on lines that were actually changed or are contextually relevant
 - Consider the full context when making recommendations
-- Highlight cross-file dependencies and breaking changes
 - Provide actionable, specific feedback
+- **Suggestions**: Only include code suggestions for critical issues (security vulnerabilities, major bugs) or very simple fixes. Most reviews should have suggestion: null
 - Ensure JSON is valid and parseable
 
 Guidelines:
-- Make comments clear, specific, and actionable
-- For suggestions, provide only the relevant code changes
-- Consider how changes in one file affect others
-- Identify patterns and inconsistencies across files
-- Prioritize security and correctness issues
+- **Individual Reviews**: Keep comments brief and focused - identify the issue quickly without lengthy explanations
+- **Overall Assessment**: Focus on actionable items. - analyze the PR holistically using proper markdown formatting.
+- **Clear Labeling**: When mentioning medium/low severity issues, MUST use explicit phrases like "Additional considerations include...", "Minor improvements needed...", "Lower priority issues...", or "Note: the following medium/low severity issues won't have inline comments:" to explain why they don't have inline comments
+- **Avoid Confusion**: Don't extensively discuss medium/low severity issues without clearly indicating their lower priority status
+- **Suggestions**: Only provide code suggestions for critical security vulnerabilities, major bugs, or when the fix is simple and obvious. Most reviews should have suggestion: null
+- **Prioritization**: Focus on security and correctness issues first
+- **Brevity**: Individual comments should be concise
 - Do not include any text outside the JSON structure`;
 }
 
@@ -123,37 +123,72 @@ ${relatedContext}
 4. Apply the same analysis criteria as a comprehensive review
 
 ## Response Format
-Use the same JSON format as comprehensive reviews, but focus on this batch of files.
+Use the same JSON format as comprehensive reviews:
+{
+  "hasReview": boolean,
+  "overallAssessment": "Analysis of this batch formatted in markdown. Focus on actionable items.",
+  "reviews": [
+    {
+      "filename": "exact filename from the batch",
+      "lineNumber": number,
+      "comment": "Brief, focused explanation of the specific issue (1-2 sentences max)",
+      "suggestion": "Only provide code suggestion if absolutely necessary for critical fixes, otherwise null",
+      "language": "Programming language", 
+      "severity": "low|medium|high",
+      "category": "bug|security|performance|style|best_practice|architecture"
+    }
+  ]
+}
 
 ## Critical Instructions:
 - ONLY use line numbers from the "Available lines for comments" lists
 - Maximum ${config.LIMITS.MAX_REVIEWS_PER_BATCH} reviews for this batch
+- **Individual comments**: Keep brief and focused
+- **Overall assessment**: Provide a analysis of this batch's role in the PR. Focus on actionable items.
+- **Clear Labeling**: If mentioning medium/low severity issues, explicitly label them as "additional considerations" or "minor improvements"
 - Prioritize by severity and cross-file impact
 - Consider the broader PR context when available`;
 }
 
 /**
  * Extract available line numbers from a patch
+ * Returns line numbers in the new version of the file (right side of diff)
  */
 function extractAvailableLines(patch) {
   if (!patch) return [];
   
   const lines = patch.split('\n');
   const availableLines = [];
-  let currentLine = 0;
+  let newLineNumber = 0;
+  let inHunk = false;
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    currentLine++;
     
-    // Skip hunk headers
+    // Parse hunk header to get starting line numbers
     if (line.startsWith('@@')) {
+      const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (match) {
+        newLineNumber = parseInt(match[1]) - 1; // -1 because we increment before checking
+        inHunk = true;
+      }
       continue;
     }
     
-    // Lines that can be commented on: additions and context lines (not deletions)
-    if (line.startsWith('+') || (!line.startsWith('-') && line.length > 0)) {
-      availableLines.push(currentLine);
+    if (!inHunk) continue;
+    
+    // Handle different line types
+    if (line.startsWith('+')) {
+      // Added line - increment new line number and mark as commentable
+      newLineNumber++;
+      availableLines.push(newLineNumber);
+    } else if (line.startsWith('-')) {
+      // Deleted line - don't increment new line number, not commentable
+      continue;
+    } else if (line.length > 0) {
+      // Context line - increment new line number and mark as commentable
+      newLineNumber++;
+      availableLines.push(newLineNumber);
     }
   }
   
