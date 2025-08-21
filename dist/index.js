@@ -45929,9 +45929,9 @@ var require_comments = __commonJS({
     var { Logger: Logger2 } = require_logger();
     var { GitHubAPIError: GitHubAPIError2 } = require_errors2();
     var { CommentStats } = require_models();
-    async function createAllReviewComments2(octokit, context, pullRequest2, reviewFormatted, files, commits) {
+    async function createAllReviewComments2(octokit, context, pullRequest, reviewFormatted, files, commits) {
       const logger = Logger2.createOperationLogger("createAllReviewComments", {
-        prNumber: pullRequest2.number,
+        prNumber: pullRequest.number,
         reviewCount: reviewFormatted.reviews.length
       });
       const { owner, repo } = context.repo;
@@ -45943,7 +45943,7 @@ var require_comments = __commonJS({
       });
       const stats = new CommentStats();
       for (const review of reviewFormatted.reviews) {
-        const reviewLogger = logger.createOperationLogger("processReview", {
+        const reviewLogger = Logger2.createOperationLogger("processReview", {
           filename: review.filename,
           severity: review.severity,
           category: review.category
@@ -45966,7 +45966,7 @@ var require_comments = __commonJS({
         }
         reviewLogger.info(`Creating review comment at line ${review.lineNumber}`);
         try {
-          await createSingleReviewComment(octokit, context, pullRequest2, review, commits);
+          await createSingleReviewComment(octokit, context, pullRequest, review, commits);
           stats.created++;
           reviewLogger.debug(`Review comment created successfully`);
         } catch (error) {
@@ -45982,7 +45982,7 @@ var require_comments = __commonJS({
       });
       return stats;
     }
-    async function createSingleReviewComment(octokit, context, pullRequest2, review, commits) {
+    async function createSingleReviewComment(octokit, context, pullRequest, review, commits) {
       const logger = Logger2.createOperationLogger("createSingleReviewComment", {
         filename: review.filename,
         lineNumber: review.lineNumber
@@ -45993,7 +45993,7 @@ var require_comments = __commonJS({
         await octokit.rest.pulls.createReviewComment({
           repo,
           owner,
-          pull_number: pullRequest2.number,
+          pull_number: pullRequest.number,
           commit_id: commits[commits.length - 1].sha,
           path: review.filename,
           body,
@@ -46065,9 +46065,9 @@ ${review.suggestion}
       logger.debug(`Line number not found in patch`);
       return false;
     }
-    async function createSummaryComment2(octokit, context, pullRequest2, reviewFormatted, commentStats) {
+    async function createSummaryComment2(octokit, context, pullRequest, reviewFormatted, commentStats) {
       const logger = Logger2.createOperationLogger("createSummaryComment", {
-        prNumber: pullRequest2.number
+        prNumber: pullRequest.number
       });
       if (!reviewFormatted.overallAssessment) {
         logger.debug(`No overall assessment provided, skipping summary comment`);
@@ -46098,7 +46098,7 @@ ${reviewFormatted.overallAssessment}
         await octokit.rest.issues.createComment({
           owner,
           repo,
-          issue_number: pullRequest2.number,
+          issue_number: pullRequest.number,
           body: summaryBody
         });
         logger.info("AI review summary comment created successfully");
@@ -46135,7 +46135,7 @@ async function main() {
   const logger = Logger.createOperationLogger("main");
   try {
     logger.info("Starting AI-powered pull request review");
-    const { octokit, prContext, context } = await initialize();
+    const { octokit, prContext, context, pullRequest } = await initialize();
     if (!shouldProcessPullRequest(prContext)) {
       logger.info("Pull request does not meet processing criteria. Exiting.");
       return;
@@ -46179,11 +46179,11 @@ async function initialize() {
       throw new PRReviewError("No pull request number found in context", "MISSING_PR_NUMBER");
     }
     logger.info(`Fetching PR details`, { owner, repo, pullNumber: pull_number });
-    const { data: pullRequest2 } = await octokit.rest.pulls.get({ owner, repo, pull_number });
+    const { data: pullRequest } = await octokit.rest.pulls.get({ owner, repo, pull_number });
     const prContext = new PRContext({
-      title: pullRequest2.title,
-      body: pullRequest2.body,
-      number: pullRequest2.number,
+      title: pullRequest.title,
+      body: pullRequest.body,
+      number: pullRequest.number,
       owner,
       repo,
       files: [],
@@ -46192,7 +46192,7 @@ async function initialize() {
       // Will be populated later
     });
     logger.info("Initialization completed successfully");
-    return { octokit, prContext, context, pullRequest: pullRequest2 };
+    return { octokit, prContext, context, pullRequest };
   } catch (error) {
     logger.error("Initialization failed", { error: error.message });
     if (error.status) {
@@ -46210,18 +46210,18 @@ function shouldProcessPullRequest(prContext) {
   logger.info("Pull request meets processing criteria");
   return true;
 }
-async function getChangedFiles(octokit, context, pullRequest2) {
+async function getChangedFiles(octokit, context, pullRequest) {
   const logger = Logger.createOperationLogger("getChangedFiles", {
-    prNumber: pullRequest2.number
+    prNumber: pullRequest.number
   });
   const { owner, repo } = context.repo;
   try {
-    logger.info(`Comparing commits: ${pullRequest2.base.sha}...${pullRequest2.head.sha}`);
+    logger.info(`Comparing commits: ${pullRequest.base.sha}...${pullRequest.head.sha}`);
     const { data } = await octokit.rest.repos.compareCommits({
       owner,
       repo,
-      base: pullRequest2.base.sha,
-      head: pullRequest2.head.sha
+      base: pullRequest.base.sha,
+      head: pullRequest.head.sha
     });
     logger.info(`Retrieved changed files`, {
       fileCount: data.files.length,
@@ -46298,7 +46298,7 @@ async function processByBatches(files, octokit, context, prContext, commits) {
   logger.info(`Processing ${batches.length} batches`);
   for (let i = 0; i < batches.length; i++) {
     const batch = batches[i];
-    const batchLogger = logger.createOperationLogger(`batch-${i + 1}`, {
+    const batchLogger = Logger.createOperationLogger(`batch-${i + 1}`, {
       batchNumber: i + 1,
       totalBatches: batches.length,
       filesInBatch: batch.length

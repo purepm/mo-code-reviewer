@@ -32,7 +32,7 @@ async function createAllReviewComments(octokit, context, pullRequest, reviewForm
   const stats = new CommentStats();
   
   for (const review of reviewFormatted.reviews) {
-    const reviewLogger = logger.createOperationLogger('processReview', {
+    const reviewLogger = Logger.createOperationLogger('processReview', {
       filename: review.filename,
       severity: review.severity,
       category: review.category
