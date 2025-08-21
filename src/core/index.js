@@ -17,7 +17,7 @@ async function main() {
   
   try {
     logger.info('Starting AI-powered pull request review');
-    const { octokit, prContext, context } = await initialize();
+    const { octokit, prContext, context, pullRequest } = await initialize();
 
     if (!shouldProcessPullRequest(prContext)) {
       logger.info('Pull request does not meet processing criteria. Exiting.');
