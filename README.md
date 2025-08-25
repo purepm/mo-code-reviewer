@@ -55,10 +55,87 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: AI Pull Request Review
-        uses: purepm/mo-code-reviewer@v1.0.0
+        uses: purepm/mo-code-reviewer@v1.2.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           trigger-label: 'mo-review'
           severity: 'low|medium|high'
 ```
+
+## Testing
+
+This action includes comprehensive local testing capabilities to help you validate changes before deployment.
+
+### Quick Start Testing
+
+1. **Set up API keys** in `scripts/test.sh`:
+   ```bash
+   export ANTHROPIC_API_KEY="your-anthropic-key-here"
+   # OR
+   export OPENAI_API_KEY="your-openai-key-here"
+   ```
+
+2. **Run tests**:
+   ```bash
+   npm run test
+   ```
+
+### Testing with Real PR Data
+
+To test the action with actual PR changes from your repository:
+
+1. **Get PR diff**: Find an open PR and get the diff between main and the PR branch:
+   ```bash
+   git diff main-commit-hash...pr-commit-hash > pr-diff.patch
+   ```
+
+2. **Convert diff to test data**: Use AI to convert your diff into the test data format. Ask an AI service to:
+   - Take your `pr-diff.patch` content
+   - Convert it to match the format in `scripts/test-data/custom-pr.js`
+   - Include proper `title`, `description`, `files` array with `filename`, `status`, `additions`, `deletions`, and `patch` fields
+   - Add relevant `commitMessages`
+
+3. **Update test data**: Replace the content in `scripts/test-data/custom-pr.js` with your converted data
+
+4. **Run test**: Execute `npm run test` to see how the action would review your actual PR
+
+### Test Data Structure
+
+Test files in `scripts/test-data/` follow this structure:
+
+```javascript
+module.exports = {
+  title: "PR title",
+  description: "PR description", 
+  files: [
+    {
+      filename: "path/to/file.js",
+      status: "modified", // "added", "modified", "deleted"
+      additions: 10,
+      deletions: 5,
+      patch: `@@ -1,5 +1,10 @@
+// Git diff patch format
+-old line
++new line`
+    }
+  ],
+  commitMessages: [
+    "commit message 1",
+    "commit message 2"
+  ]
+};
+```
+
+### Available Test Scenarios
+
+- **`small-pr.js`**: Small authentication bug fix (tests holistic analysis)
+- **`custom-pr.js`**: Your custom PR data (replace with real PR data)
+- **`large-pr.js`**: Large API refactor (tests batch processing)
+
+### Troubleshooting
+
+- **No AI response**: Ensure API keys are correctly set in `scripts/test.sh`
+- **Prompt too long**: Large PRs automatically use batch processing
+- **Invalid test data**: Ensure your converted PR data matches the required format
+- **Missing dependencies**: Run `npm install` before testing

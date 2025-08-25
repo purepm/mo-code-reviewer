@@ -14,6 +14,7 @@ const {
   createFileBatches
 } = require('../src/utils');
 const { initializeAI, getAIService } = require('../src/services/ai');
+const mockPRData = require('./test-data');
 
 // Mock GitHub Action inputs
 const mockInputs = {
@@ -39,87 +40,7 @@ core.info = (message) => console.log(`ℹ️  ${message}`);
 core.warning = (message) => console.log(`⚠️  ${message}`);
 core.error = (message) => console.log(`❌ ${message}`);
 
-// Sample PR data for testing
-const mockPRData = {
-  small: {
-    title: "Fix user authentication bug",
-    description: "This PR fixes a critical bug in the user authentication flow where tokens were not being validated properly.",
-    files: [
-      {
-        filename: "src/auth.js",
-        status: "modified",
-        additions: 5,
-        deletions: 2,
-        patch: `@@ -10,7 +10,10 @@ function validateToken(token) {
-   if (!token) {
-     return false;
-   }
--  return jwt.verify(token, process.env.JWT_SECRET);
-+  try {
-+    return jwt.verify(token, process.env.JWT_SECRET);
-+  } catch (error) {
-+    console.error('Token validation failed:', error);
-+    return false;
-+  }
- }`
-      },
-      {
-        filename: "src/middleware.js",
-        status: "modified", 
-        additions: 3,
-        deletions: 1,
-        patch: `@@ -15,6 +15,8 @@ function authMiddleware(req, res, next) {
-   const token = req.headers.authorization?.split(' ')[1];
-   
-   if (!validateToken(token)) {
-+    console.log('Authentication failed for request:', req.path);
-     return res.status(401).json({ error: 'Unauthorized' });
-   }
-   
-   next();
- }`
-      }
-    ],
-    commitMessages: [
-      "fix: add proper error handling to token validation",
-      "feat: add logging for failed authentication attempts"
-    ]
-  },
-  large: {
-    title: "Major refactor: Update API endpoints and database schema",
-    description: "This PR includes a major refactor of our API endpoints and updates the database schema to support new features.",
-    files: Array.from({ length: 20 }, (_, i) => ({
-      filename: `src/api/endpoint${i + 1}.js`,
-      status: "modified",
-      additions: Math.floor(Math.random() * 50) + 10,
-      deletions: Math.floor(Math.random() * 20) + 5,
-      patch: `@@ -1,10 +1,15 @@
- const express = require('express');
- const router = express.Router();
- 
-+// Updated endpoint ${i + 1}
- router.get('/endpoint${i + 1}', async (req, res) => {
--  // Old implementation
--  const data = await getData();
-+  try {
-+    // New implementation with error handling
-+    const data = await getData();
-+    res.json({ success: true, data });
-+  } catch (error) {
-+    res.status(500).json({ error: error.message });
-+  }
--  res.json(data);
- });
- 
- module.exports = router;`
-    })),
-    commitMessages: [
-      "refactor: update all API endpoints with proper error handling",
-      "feat: add consistent response format across all endpoints",
-      "fix: handle edge cases in data retrieval"
-    ]
-  }
-};
+// Mock PR data is now imported from separate files in ./test-data/
 
 async function testHolisticAnalysis(prData) {
   console.log('\n🔍 Testing Holistic Analysis');
@@ -221,16 +142,20 @@ async function main() {
   testLimits();
   
   // Test with small PR (holistic)
-  await testHolisticAnalysis(mockPRData.small);
+  // await testHolisticAnalysis(mockPRData.small);
+  
+  // Test with accounting PR (holistic)
+  await testHolisticAnalysis(mockPRData.custom);
   
   // Test with large PR (batching)
-  await testHolisticAnalysis(mockPRData.large);
+  // await testHolisticAnalysis(mockPRData.large);
   
   console.log('\n✅ Testing completed!');
   console.log('\n💡 Tips:');
   console.log('   - Set ANTHROPIC_API_KEY or OPENAI_API_KEY to test AI integration');
   console.log('   - Set AI_PROVIDER=openai to test OpenAI instead of Anthropic');
-  console.log('   - Modify mockPRData in this script to test different scenarios');
+  console.log('   - Modify files in ./test-data/ to test different scenarios');
+  console.log('   - Add new PR test cases by creating files in ./test-data/ and updating the index.js');
 }
 
 // Run if called directly
