@@ -46319,13 +46319,6 @@ async function finalizePullRequest(octokit, context, prContext) {
   const { owner, repo } = context.repo;
   const requiredLabel = config.getTriggerLabel();
   try {
-    logger.info(`Removing trigger label: ${requiredLabel}`);
-    await octokit.rest.issues.removeLabel({
-      owner,
-      repo,
-      issue_number: prContext.number,
-      name: requiredLabel
-    });
     logger.info("Creating approval review");
     const emoji = prContext.hasHighSeverityIssues ? "\u26A0\uFE0F" : "\u2705";
     let completionBody = `${emoji} **AI Code Review Completed**
@@ -46343,11 +46336,27 @@ async function finalizePullRequest(octokit, context, prContext) {
       event: "APPROVE",
       body: completionBody
     });
-    logger.info("Pull request finalization completed successfully");
+    logger.info("Approval review created successfully");
   } catch (e) {
-    logger.error(`Finalizing pull request failed`, { error: e.message });
-    throw new GitHubAPIError(`Failed to finalize pull request: ${e.message}`, e.status);
+    logger.error(`Failed to create approval review`, { error: e.message });
+    throw new GitHubAPIError(`Failed to create approval review: ${e.message}`, e.status);
   }
+  try {
+    logger.info(`Removing trigger label: ${requiredLabel}`);
+    await octokit.rest.issues.removeLabel({
+      owner,
+      repo,
+      issue_number: prContext.number,
+      name: requiredLabel
+    });
+    logger.info("Trigger label removed successfully");
+  } catch (e) {
+    logger.error(`Failed to remove trigger label: ${requiredLabel}`, {
+      error: e.message,
+      note: "This is non-critical - the review process completed successfully"
+    });
+  }
+  logger.info("Pull request finalization completed");
 }
 main();
 /*! Bundled license information:

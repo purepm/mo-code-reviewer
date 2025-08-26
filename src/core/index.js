@@ -298,14 +298,6 @@ async function finalizePullRequest(octokit, context, prContext) {
   const requiredLabel = config.getTriggerLabel();
 
   try {
-    logger.info(`Removing trigger label: ${requiredLabel}`);
-    await octokit.rest.issues.removeLabel({
-      owner,
-      repo,
-      issue_number: prContext.number,
-      name: requiredLabel,
-    });
-
     logger.info('Creating approval review');
     
     // Build the completion message with optional overall assessment
@@ -325,11 +317,31 @@ async function finalizePullRequest(octokit, context, prContext) {
       body: completionBody
     });
     
-    logger.info('Pull request finalization completed successfully');
+    logger.info('Approval review created successfully');
   } catch (e) {
-    logger.error(`Finalizing pull request failed`, { error: e.message });
-    throw new GitHubAPIError(`Failed to finalize pull request: ${e.message}`, e.status);
+    logger.error(`Failed to create approval review`, { error: e.message });
+    throw new GitHubAPIError(`Failed to create approval review: ${e.message}`, e.status);
   }
+
+  // Remove trigger label as the final step - don't throw error if it fails
+  try {
+    logger.info(`Removing trigger label: ${requiredLabel}`);
+    await octokit.rest.issues.removeLabel({
+      owner,
+      repo,
+      issue_number: prContext.number,
+      name: requiredLabel,
+    });
+    logger.info('Trigger label removed successfully');
+  } catch (e) {
+    // Log the error but don't throw - label removal failure shouldn't stop the process
+    logger.error(`Failed to remove trigger label: ${requiredLabel}`, { 
+      error: e.message,
+      note: 'This is non-critical - the review process completed successfully'
+    });
+  }
+  
+  logger.info('Pull request finalization completed');
 }
 
 main();
