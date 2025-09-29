@@ -2,21 +2,24 @@ const config = require('../../config');
 const { AIProviderError } = require('../../lib/errors');
 const AnthropicService = require('./anthropic');
 const OpenAIService = require('./openai');
+const OpenRouterService = require('./openRouter');
 
 /**
  * AI service factory
  */
 class AIServiceFactory {
-  static create(provider = null) {
-    const actualProvider = provider || config.getAIProvider();
+  static create() {
+    const provider = config.getAIProvider();
     
-    switch (actualProvider) {
+    switch (provider) {
       case 'anthropic':
         return new AnthropicService();
       case 'openai':
         return new OpenAIService();
+      case 'openrouter':
+        return new OpenRouterService();
       default:
-        throw new AIProviderError(`Unsupported AI provider: ${actualProvider}`, actualProvider);
+        throw new AIProviderError(`Unsupported AI provider: ${provider}`, provider);
     }
   }
 }
@@ -27,9 +30,9 @@ let aiServiceInstance = null;
 /**
  * Get AI service singleton
  */
-function getAIService(provider = null) {
+function getAIService() {
   if (!aiServiceInstance) {
-    aiServiceInstance = AIServiceFactory.create(provider);
+    aiServiceInstance = AIServiceFactory.create();
   }
   return aiServiceInstance;
 }
@@ -37,8 +40,8 @@ function getAIService(provider = null) {
 /**
  * Initialize AI service
  */
-async function initializeAI(provider = null) {
-  const service = getAIService(provider);
+async function initializeAI() {
+  const service = getAIService();
   await service.initialize();
   return service;
 }

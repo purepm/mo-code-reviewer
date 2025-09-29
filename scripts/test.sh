@@ -1,17 +1,26 @@
 #!/bin/bash
-export ANTHROPIC_API_KEY="your-api-key-here"
+export ANTHROPIC_API_KEY=""
+export OPENAI_API_KEY=""
+export OPENROUTER_API_KEY=""
+
+export AI_PROVIDER="openrouter"
+export SEVERITY="high"
+export OPENROUTER_AI_MODEL="openai/gpt-oss-120b"
 
 # Local testing script for mo-code-reviewer
 echo "🧪 mo-code-reviewer Local Testing Setup"
 echo "======================================="
 
 # Check if API keys are set
-if [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$OPENAI_API_KEY" ]; then
+if [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$OPENAI_API_KEY" ] && [ -z "$OPENROUTER_API_KEY" ]; then
     echo "⚠️  No AI API keys found in environment"
     echo "💡 To test AI integration, set one of:"
     echo "   export ANTHROPIC_API_KEY='your-key-here'"
     echo "   export OPENAI_API_KEY='your-key-here'"
+    echo "   export OPENROUTER_API_KEY='your-key-here'"
     echo ""
+    echo "   export AI_PROVIDER='openrouter'"
+    echo "   export OPENROUTER_AI_MODEL='openai/gpt-oss-120b'"
 fi
 
 # Check if dependencies are installed
@@ -28,4 +37,7 @@ echo ""
 echo "🔧 Other testing options:"
 echo "   npm run build          # Test the build process"
 echo "   node scripts/test-local.js      # Run tests again"
-echo "   AI_PROVIDER=openai node scripts/test-local.js  # Test with OpenAI"
+echo "   AI_PROVIDER=openai node scripts/test-local.js     # Test with OpenAI"
+echo "   AI_PROVIDER=openrouter node scripts/test-local.js # Test with OpenRouter"
+echo "   SEVERITY=low|medium|high node scripts/test-local.js # Test with severity"
+echo "   OPENROUTER_AI_MODEL=openai/gpt-oss-120b node scripts/test-local.js # Test with OpenRouter model"

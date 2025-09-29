@@ -23,7 +23,7 @@ class Config {
   static SEVERITY_LEVELS = ['low', 'medium', 'high'];
 
   // Valid AI providers
-  static AI_PROVIDERS = ['anthropic', 'openai'];
+  static AI_PROVIDERS = ['anthropic', 'openai', 'openrouter'];
 
   // Retryable HTTP status codes
   static RETRYABLE_STATUS_CODES = [429, 500, 502, 503, 504, 529];
@@ -55,7 +55,7 @@ class Config {
    * Get AI provider configuration
    */
   getAIProvider() {
-    const provider = this.get('ai-provider') || 'anthropic';
+    const provider = this.get('ai-provider');
     if (!Config.AI_PROVIDERS.includes(provider)) {
       throw new Error(`Unsupported AI provider: ${provider}. Supported: ${Config.AI_PROVIDERS.join(', ')}`);
     }
@@ -92,6 +92,13 @@ class Config {
     }
     
     return levels.filter(level => Config.SEVERITY_LEVELS.includes(level));
+  }
+
+  /**
+   * Get AI model
+   */
+  getOpenRouterAIModel() {
+    return this.get('openrouter-ai-model'); // openai/gpt-oss-120b
   }
 
   /**

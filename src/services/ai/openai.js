@@ -25,7 +25,7 @@ class OpenAIService extends BaseAIService {
   async callAI(prompt) {
     const completion = await this.client.chat.completions.create({
       model: "gpt-4",
-      max_tokens: 2048,
+      stream: false,
       messages: [
         { 
           role: "system", 
