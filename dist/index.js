@@ -23056,7 +23056,7 @@ var require_config = __commonJS({
       // Valid severity levels
       static SEVERITY_LEVELS = ["low", "medium", "high"];
       // Valid AI providers
-      static AI_PROVIDERS = ["anthropic", "openai"];
+      static AI_PROVIDERS = ["anthropic", "openai", "openrouter"];
       // Retryable HTTP status codes
       static RETRYABLE_STATUS_CODES = [429, 500, 502, 503, 504, 529];
       // Retryable network error codes
@@ -23082,7 +23082,7 @@ var require_config = __commonJS({
        * Get AI provider configuration
        */
       getAIProvider() {
-        const provider = this.get("ai-provider") || "anthropic";
+        const provider = this.get("ai-provider");
         if (!_Config.AI_PROVIDERS.includes(provider)) {
           throw new Error(`Unsupported AI provider: ${provider}. Supported: ${_Config.AI_PROVIDERS.join(", ")}`);
         }
@@ -23113,6 +23113,12 @@ var require_config = __commonJS({
           core.warning(`Invalid severity levels: ${invalid.join(", ")}. Valid: ${_Config.SEVERITY_LEVELS.join(", ")}`);
         }
         return levels.filter((level) => _Config.SEVERITY_LEVELS.includes(level));
+      }
+      /**
+       * Get AI model
+       */
+      getOpenRouterAIModel() {
+        return this.get("openrouter-ai-model");
       }
       /**
        * Clear configuration cache
@@ -23382,8 +23388,6 @@ var require_models = __commonJS({
         this.language = data.language || "javascript";
         this.severity = data.severity;
         this.category = data.category;
-        this.crossFileImpact = data.crossFileImpact || null;
-        this.contextualReason = data.contextualReason || null;
         this.validate();
       }
       validate() {
@@ -23395,34 +23399,6 @@ var require_models = __commonJS({
         if (!config2.SEVERITY_LEVELS.includes(this.severity)) {
           throw new ConfigurationError(`Invalid severity: ${this.severity}. Valid: ${config2.SEVERITY_LEVELS.join(", ")}`);
         }
-        const validCategories = ["bug", "security", "performance", "style", "best_practice", "architecture"];
-        if (!validCategories.includes(this.category)) {
-          throw new ConfigurationError(`Invalid category: ${this.category}. Valid: ${validCategories.join(", ")}`);
-        }
-      }
-      /**
-       * Check if this review has cross-file impact
-       */
-      hasCrossFileImpact() {
-        return Boolean(this.crossFileImpact);
-      }
-      /**
-       * Get priority score for sorting (higher = more important)
-       */
-      getPriorityScore() {
-        const severityScores = { high: 3, medium: 2, low: 1 };
-        const categoryScores = {
-          security: 3,
-          bug: 3,
-          architecture: 2,
-          performance: 2,
-          best_practice: 1,
-          style: 1
-        };
-        const severityScore = severityScores[this.severity] || 1;
-        const categoryScore = categoryScores[this.category] || 1;
-        const crossFileBonus = this.hasCrossFileImpact() ? 1 : 0;
-        return severityScore + categoryScore + crossFileBonus;
       }
     };
     var CommentStats = class _CommentStats {
@@ -23471,6 +23447,7 @@ ${file.patch}
 \`\`\``;
     }
     function generateComprehensivePrompt2(prContext) {
+      const severityLevels = config2.getSeverityLevels();
       const filesContext = prContext.files.map((file) => {
         return generateFileContext(file);
       }).join("\n");
@@ -23501,8 +23478,8 @@ Provide your review in JSON format:
       "comment": "Brief, focused explanation of the specific issue (1-2 sentences max)",
       "suggestion": "Only provide code suggestion if absolutely necessary for critical fixes, otherwise null",
       "language": "Programming language",
-      "severity": "low|medium|high",
-      "category": "bug|security|performance|style|best_practice|architecture"
+      "severity": "${config2.SEVERITY_LEVELS.join("|")}",
+      "category": "logic|bug|security|performance|style|best_practice|architecture"
     }
   ]
 }
@@ -23515,6 +23492,7 @@ Provide your review in JSON format:
 - Focus on lines that were actually changed
 - Only use "high" severity for critical issues that could cause system failures, security breaches, or data loss
 - Provide actionable, specific feedback
+- Return a review for a file ONLY if the severity level is equal or greater than ${severityLevels.join("|")}
 - Ensure review comments are not repetitive
 - Avoid nitpicking minor issues that don't impact functionality
 - Dont add comments on test files
@@ -23522,6 +23500,7 @@ Provide your review in JSON format:
     }
     function generateBatchPrompt2(batchContext) {
       const filesContext = batchContext.files.map((file) => generateFileContext(file)).join("\n");
+      const severityLevels = config2.getSeverityLevels();
       return `You are reviewing a batch of related files from a larger pull request. Consider both the files in this batch and their relationship to the broader PR context.
 
 ## Pull Request Context
@@ -23547,8 +23526,8 @@ Use the same JSON format as comprehensive reviews:
       "comment": "Brief, focused explanation of the specific issue (1-2 sentences max)",
       "suggestion": "Only provide code suggestion if absolutely necessary for critical fixes, otherwise null",
       "language": "Programming language", 
-      "severity": "low|medium|high",
-      "category": "bug|security|performance|style|best_practice|architecture"
+      "severity": "${config2.SEVERITY_LEVELS.join("|")}",
+      "category": "logic|bug|security|performance|style|best_practice|architecture"
     }
   ]
 }
@@ -23558,6 +23537,7 @@ Use the same JSON format as comprehensive reviews:
 - **Individual comments**: Keep brief and focused
 - **Overall assessment**: Provide a analysis of this batch's role in the PR. Focus on actionable items.
 - Only use "high" severity for critical issues that could cause system failures, security breaches, or data loss
+- Return a review for a file ONLY if the severity level is equal or greater than ${severityLevels.join("|")}
 - Ensure review comments are not repetitive
 - Prioritize by severity and cross-file impact
 - Avoid nitpicking minor issues that don't impact functionality
@@ -45864,7 +45844,7 @@ var require_openai2 = __commonJS({
       async callAI(prompt) {
         const completion = await this.client.chat.completions.create({
           model: "gpt-4",
-          max_tokens: 2048,
+          stream: false,
           messages: [
             {
               role: "system",
@@ -45881,6 +45861,58 @@ var require_openai2 = __commonJS({
   }
 });
 
+// src/services/ai/openRouter.js
+var require_openRouter = __commonJS({
+  "src/services/ai/openRouter.js"(exports2, module2) {
+    var OpenAI = require_openai();
+    var config2 = require_config();
+    var BaseAIService = require_base();
+    var OpenRouterService = class extends BaseAIService {
+      constructor() {
+        super("openrouter");
+      }
+      async initialize() {
+        try {
+          this.logger.info(`Initializing OpenRouter AI service`);
+          const apiKey = config2.getAIApiKey("openrouter");
+          this.client = new OpenAI({
+            apiKey,
+            baseURL: "https://openrouter.ai/api/v1"
+          });
+          this.logger.info(`OpenRouter AI service initialized successfully`);
+        } catch (error) {
+          this.logger.error(`Failed to initialize OpenRouter AI service`, { error: error.message });
+          throw error;
+        }
+      }
+      async callAI(prompt) {
+        const completion = await this.client.chat.completions.create({
+          model: config2.getOpenRouterAIModel(),
+          // Using GPT OSS 120B through OpenRouter
+          stream: false,
+          // Explicitly disable streaming to get a single response
+          extra_headers: {
+            "HTTP-Referer": "https://github.com/mo-code-reviewer",
+            // Site URL for OpenRouter rankings
+            "X-Title": "MO Code Reviewer"
+            // Site title for OpenRouter rankings
+          },
+          messages: [
+            {
+              role: "system",
+              content: "You are an expert code reviewer and software engineer. Your task is to analyze code snippets provided by users and provide constructive feedback. Always respond with valid JSON that can be parsed."
+            },
+            { role: "user", content: prompt }
+          ]
+        });
+        const responseText = completion.choices[0].message.content;
+        return this.parseAIResponse(responseText);
+      }
+    };
+    module2.exports = OpenRouterService;
+  }
+});
+
 // src/services/ai/index.js
 var require_ai = __commonJS({
   "src/services/ai/index.js"(exports2, module2) {
@@ -45888,28 +45920,31 @@ var require_ai = __commonJS({
     var { AIProviderError } = require_errors2();
     var AnthropicService = require_anthropic();
     var OpenAIService = require_openai2();
+    var OpenRouterService = require_openRouter();
     var AIServiceFactory = class {
-      static create(provider = null) {
-        const actualProvider = provider || config2.getAIProvider();
-        switch (actualProvider) {
+      static create() {
+        const provider = config2.getAIProvider();
+        switch (provider) {
           case "anthropic":
             return new AnthropicService();
           case "openai":
             return new OpenAIService();
+          case "openrouter":
+            return new OpenRouterService();
           default:
-            throw new AIProviderError(`Unsupported AI provider: ${actualProvider}`, actualProvider);
+            throw new AIProviderError(`Unsupported AI provider: ${provider}`, provider);
         }
       }
     };
     var aiServiceInstance = null;
-    function getAIService2(provider = null) {
+    function getAIService2() {
       if (!aiServiceInstance) {
-        aiServiceInstance = AIServiceFactory.create(provider);
+        aiServiceInstance = AIServiceFactory.create();
       }
       return aiServiceInstance;
     }
-    async function initializeAI2(provider = null) {
-      const service = getAIService2(provider);
+    async function initializeAI2() {
+      const service = getAIService2();
       await service.initialize();
       return service;
     }
