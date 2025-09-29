@@ -21,6 +21,8 @@ ${file.patch}
  */
 function generateComprehensivePrompt(prContext) {
 
+  const severityLevels = config.getSeverityLevels();
+
   // Build file context with line number information
   const filesContext = prContext.files.map(file => {
     return generateFileContext(file);
@@ -53,8 +55,8 @@ Provide your review in JSON format:
       "comment": "Brief, focused explanation of the specific issue (1-2 sentences max)",
       "suggestion": "Only provide code suggestion if absolutely necessary for critical fixes, otherwise null",
       "language": "Programming language",
-      "severity": "low|medium|high",
-      "category": "bug|security|performance|style|best_practice|architecture"
+      "severity": "${config.SEVERITY_LEVELS.join('|')}",
+      "category": "logic|bug|security|performance|style|best_practice|architecture"
     }
   ]
 }
@@ -67,6 +69,7 @@ Provide your review in JSON format:
 - Focus on lines that were actually changed
 - Only use "high" severity for critical issues that could cause system failures, security breaches, or data loss
 - Provide actionable, specific feedback
+- Return a review for a file ONLY if the severity level is equal or greater than ${severityLevels.join('|')}
 - Ensure review comments are not repetitive
 - Avoid nitpicking minor issues that don't impact functionality
 - Dont add comments on test files
@@ -78,6 +81,7 @@ Provide your review in JSON format:
  */
 function generateBatchPrompt(batchContext) {
   const filesContext = batchContext.files.map(file => generateFileContext(file)).join('\n');
+  const severityLevels = config.getSeverityLevels();
 
   return `You are reviewing a batch of related files from a larger pull request. Consider both the files in this batch and their relationship to the broader PR context.
 
@@ -104,8 +108,8 @@ Use the same JSON format as comprehensive reviews:
       "comment": "Brief, focused explanation of the specific issue (1-2 sentences max)",
       "suggestion": "Only provide code suggestion if absolutely necessary for critical fixes, otherwise null",
       "language": "Programming language", 
-      "severity": "low|medium|high",
-      "category": "bug|security|performance|style|best_practice|architecture"
+      "severity": "${config.SEVERITY_LEVELS.join('|')}",
+      "category": "logic|bug|security|performance|style|best_practice|architecture"
     }
   ]
 }
@@ -115,6 +119,7 @@ Use the same JSON format as comprehensive reviews:
 - **Individual comments**: Keep brief and focused
 - **Overall assessment**: Provide a analysis of this batch's role in the PR. Focus on actionable items.
 - Only use "high" severity for critical issues that could cause system failures, security breaches, or data loss
+- Return a review for a file ONLY if the severity level is equal or greater than ${severityLevels.join('|')}
 - Ensure review comments are not repetitive
 - Prioritize by severity and cross-file impact
 - Avoid nitpicking minor issues that don't impact functionality

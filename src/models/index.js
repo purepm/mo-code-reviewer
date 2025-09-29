@@ -185,8 +185,6 @@ class ReviewComment {
     this.language = data.language || 'javascript';
     this.severity = data.severity;
     this.category = data.category;
-    this.crossFileImpact = data.crossFileImpact || null;
-    this.contextualReason = data.contextualReason || null;
     
     this.validate();
   }
@@ -201,39 +199,6 @@ class ReviewComment {
     if (!config.SEVERITY_LEVELS.includes(this.severity)) {
       throw new ConfigurationError(`Invalid severity: ${this.severity}. Valid: ${config.SEVERITY_LEVELS.join(', ')}`);
     }
-    
-    const validCategories = ['bug', 'security', 'performance', 'style', 'best_practice', 'architecture'];
-    if (!validCategories.includes(this.category)) {
-      throw new ConfigurationError(`Invalid category: ${this.category}. Valid: ${validCategories.join(', ')}`);
-    }
-  }
-
-  /**
-   * Check if this review has cross-file impact
-   */
-  hasCrossFileImpact() {
-    return Boolean(this.crossFileImpact);
-  }
-
-  /**
-   * Get priority score for sorting (higher = more important)
-   */
-  getPriorityScore() {
-    const severityScores = { high: 3, medium: 2, low: 1 };
-    const categoryScores = { 
-      security: 3, 
-      bug: 3, 
-      architecture: 2, 
-      performance: 2, 
-      best_practice: 1, 
-      style: 1 
-    };
-    
-    const severityScore = severityScores[this.severity] || 1;
-    const categoryScore = categoryScores[this.category] || 1;
-    const crossFileBonus = this.hasCrossFileImpact() ? 1 : 0;
-    
-    return severityScore + categoryScore + crossFileBonus;
   }
 }
 
