@@ -7,7 +7,7 @@ This GitHub Action automatically reviews pull requests using AI, providing code 
 - Automatically triggered by a specific label on pull requests
 - Reviews changed files in the pull request
 - Generates AI-powered code reviews and suggestions
-- Supports multiple AI providers (currently Anthropic, with easy extensibility)
+- Supports multiple AI providers (Anthropic, OpenAI, and OpenRouter)
 - Adds review comments directly to the pull request
 - Approves the pull request after successful review
 - Removes the trigger label after completion
@@ -28,9 +28,11 @@ To use this action, add a specific label (configured as `trigger-label`) to your
 - `github-token`: GitHub token for API access (required)
 - `anthropic-api-key`: API key for Anthropic (required if using Anthropic as the AI provider)
 - `openai-api-key`: API key for OpenAI (required if using OpenAI as the AI provider)
+- `openrouter-api-key`: API key for OpenRouter (required if using OpenRouter as the AI provider)
 - `trigger-label`: The label that triggers the review process (required)
-- `ai-provider`: The AI provider to use (optional, defaults to 'anthropic') values: ('anthropic', 'openai')
+- `ai-provider`: The AI provider to use (optional, defaults to 'anthropic') values: ('anthropic', 'openai', 'openrouter')
 - `severity`: The AI provide the comments with a severity flag, you can decide which of those add to the review by passing the values here ("low|medium|high"), by default only add the high severity comments.
+- `openrouter-ai-model`: AI model to use with OpenRouter (optional, e.g., 'openai/gpt-4o-mini')
 
 ### Secrets
 
@@ -39,6 +41,7 @@ Make sure to set up the following secrets in your repository:
 - `GITHUB_TOKEN`: Automatically provided by GitHub Actions
 - `ANTHROPIC_API_KEY`: Your Anthropic API key (if required)
 - `OPENAI_API_KEY`: Your OpenAI API key (if required)
+- `OPENROUTER_API_KEY`: Your OpenRouter API key (if required)
 
 ## Workflow Example
 
