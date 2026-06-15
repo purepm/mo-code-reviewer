@@ -1,6 +1,6 @@
 {
   "name": "mo-code-reviewer",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "AI reviewer POC",
   "main": "index.js",
   "scripts": {
