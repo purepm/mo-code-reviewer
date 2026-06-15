@@ -32,5 +32,5 @@ branding:
   icon: 'gift'
   color: orange
 runs:
-  using: 'node20'
+  using: 'node24'
   main: 'dist/index.js'
